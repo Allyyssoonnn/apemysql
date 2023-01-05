@@ -1,0 +1,15 @@
+{
+  "name": "apemysql",
+  "version": "1.0.0",
+  "description": "Biblioteca para sinconização de banco de dados",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "allyyssoonnn <alysonone123@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "mysql": "^2.18.1"
+  }
+}
