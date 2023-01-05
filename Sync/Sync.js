@@ -17,10 +17,10 @@ function log(msg) {
     // });
 }
 
-async function Sync(path) {
+async function Sync(database, path) {
     try {
         
-        log('[SYNC] INICIANDO SYNC BASE=bd');
+        log(`[SYNC] INICIANDO SYNC BASE=${database}`);
 
         const entitys = fs.readdirSync(path);
 
@@ -30,7 +30,7 @@ async function Sync(path) {
             const instance = new Archive();
 
             if (instance instanceof EntitySync) {
-                await SyncTab(instance);
+                await SyncTab(instance, database);
             }
             
         }
@@ -42,7 +42,7 @@ async function Sync(path) {
     }
 }
 
-async function SyncTab(entity) {
+async function SyncTab(entity, database) {
 
     const tab = entity.tab;
     const fields = entity.getFields();
@@ -80,7 +80,7 @@ async function SyncTab(entity) {
     await setIndex(entity);
 
     //Remove os campos que não existem na receita da tabela
-    const fieldsTab = await db.getCamposTabela('gestao', tab);
+    const fieldsTab = await db.getCamposTabela(database, tab);
     for (let i = 0; i < fieldsTab.length; i++) {
         const fildExist = _.find(fields, (q) => {
             return q.name === fieldsTab[i].col;
