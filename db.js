@@ -3,7 +3,38 @@ const mysql = require('mysql');
 //Passei para global.pool pois estava gerando desconexão quando atualizava o app do garçom
 // let pool = null;
 
-function Connect(data) {
+async function verificaBase(data) {
+    const base = data.database;
+    
+    const teste = mysql.createConnection({
+        host: data.host,
+        port: data.port,
+        user: data.user,
+        password: data.password,
+        database: ''
+    })
+
+    return new Promise((res, rej) => {
+        teste.connect(async (err) => {
+            if (err) {
+                res(false);
+                console.log(err);
+            } else {
+                try {
+                    await query(`SHOW TABLES FROM ${base}`, [], teste);
+                } catch (error) {
+                    teste.query(`CREATE DATABASE ${base} CHARACTER SET utf8 COLLATE utf8_general_ci;`);   
+                }
+                res(true);
+            }
+        })
+    })
+}
+
+async function Connect(data) {
+    const exist = await verificaBase(data);
+    if (!exist) return { status: false };
+
   global.database = data;
     return new Promise((resolve, reject) => {
 
@@ -21,7 +52,8 @@ function Connect(data) {
                     status: false,
                     code: err.code,
                     msg: err.message
-                })
+                });
+                console.log(err);
             } else {
                 const database = mysql.createPool({
                     host: data.host,
@@ -108,8 +140,11 @@ function Disconnect() {
  * @param {Connection} connection Conexão opcional do mysql.
  */
  function query(sql, params, connection) {
+    let conn;
+    conn = connection ? connection : global.pool;
+
     return new Promise((resolve, reject) => {
-      global.pool.query(sql, params, (err2, res) => {
+      conn.query(sql, params, (err2, res) => {
         if (err2) {
           // console.log(err2);
           reject(err2);
@@ -230,6 +265,173 @@ try {
   throw ex;
 }
 }
+
+const updateTable = async (nome_tabela, campos, valores, where) => {
+
+    try {
+
+        const fields = await query(`DESCRIBE ${nome_tabela}`);
+
+        const values = [];
+        const params = [];
+
+        const removeIfen = (text) => {
+            if (typeof text != 'string') return text;
+            var remove = false;
+            var newtext = '';
+            if (text.substring(0, 1) === `'` && text.substring(text.length, text.length - 1) === `'`) {
+                remove = true;
+            }
+            if (remove) {
+                newtext = text.substring(1, text.length - 1);
+            }
+            return remove ? newtext : text;
+        }
+
+        for (let i = 0; i < campos.length; i++) {
+            let exist = false;
+            fields.map((field, index) => {
+                if (campos[i] === field.Field) {
+                    exist = true;
+                }
+            })
+
+            if (exist) {
+                // values.push({ campo: campos[i], valor: valores[i] || '' });
+                values.push({ campo: campos[i], valor: valores[i] === `'null'` || !valores[i] ? 'NULL' : valores[i] });
+                params.push(removeIfen(valores[i] === `'null'` || valores[i] === `''` ? 'NULL' : valores[i]));
+            }
+        }
+
+        if (values.length === 0) {
+            return { status: true }
+        }
+        // SET ${values.map((campo, index) => (`${campo.campo} = ${campo.valor}`))}
+        let sql = `
+            UPDATE ${nome_tabela}
+            SET ${values.map((campo, index) => (`${campo.campo} = ?`))}
+            WHERE ${where}
+        `;
+        
+        const resp = await query(sql, params);
+
+        return {
+            status: true,
+            data: resp
+        }
+
+    } catch (error) {
+        console.log(error);
+        return {
+            status: false,
+            error: error
+        }
+    }
+
+}
+
+const insertTable = async (nome_tabela, campos, valores) => {
+
+    try {
+
+        const fields = await query(`DESCRIBE ${nome_tabela}`);
+
+        const values = [];
+        const params = [];
+
+        const removeIfen = (text) => {
+            if (typeof text != 'string') return text;
+            var remove = false;
+            var newtext = '';
+            if (text.substring(0, 1) === `'` && text.substring(text.length, text.length - 1) === `'`) {
+                remove = true;
+            }
+            if (remove) {
+                newtext = text.substring(1, text.length - 1);
+            }
+            return remove ? newtext : text;
+        }
+
+        for (let i = 0; i < campos.length; i++) {
+            let exist = false;
+            fields.map((field, index) => {
+                if (campos[i] === field.Field) {
+                    exist = true;
+                }
+            })
+
+            if (exist) {
+                // values.push({ campo: campos[i], valor: valores[i] });
+                values.push({ campo: campos[i], valor: valores[i] });
+                params.push(removeIfen(valores[i] === `'null'` || valores[i] === `''` ? 'NULL' : valores[i]));
+            }
+        }
+
+        if (values.length === 0) {
+            return { status: true }
+        }
+
+        // VALUES (${values.map((valor, index) => (valor.valor === `'null'` || !valor.valor ? 'NULL' : valor.valor))})
+        let sql = `
+            INSERT INTO ${nome_tabela} (${values.map((campo, index) => (campo.campo))})
+            VALUES (${values.map((valor, index) => ('?'))})
+        `;
+
+        const resp = await query(sql, params);
+
+        return {
+            status: true,
+            data: resp,
+            insertId: resp.insertId
+        }
+
+    } catch (error) {
+        console.log(error);
+        return {
+            status: false,
+            error: error
+        }
+    }
+
+}
+
+const setQuery = async (tabela, campo_chave, objeto) => {
+    var error = false;
+    var errormsg = '';
+    var insertId;
+
+    if (objeto[campo_chave]) {
+        for (const property of Object.keys(objeto)) {    
+            const resp = await updateTable(tabela,
+                [property],
+                [objeto[property]],
+                `${campo_chave} = ${objeto[campo_chave]}`
+            );
+            if (!resp.status) { error = true; errormsg = resp.error.sqlMessage; }
+        }
+    } else {
+        let campos = [];
+        let valores = [];
+        for (const property of Object.keys(objeto)) {    
+            campos.push(property);
+            valores.push(objeto[property]);
+        }
+
+        const resp = await insertTable(tabela, campos, valores);
+        insertId = resp.insertId;
+        if (!resp.status) { error = true; errormsg = resp.error.sqlMessage; }
+    }
+
+    return({
+        status: !error,
+        msg: errormsg,
+        insertId
+    });
+}
+
+exports.updateTable = updateTable;
+exports.insertTable = insertTable;
+exports.setQuery = setQuery;
 
 exports.Connect = Connect;
 // exports.criarconexao = criarconexao;

@@ -26,7 +26,7 @@ async function Sync(database, path) {
 
         for (let i = 0; i < entitys.length; i++) {
             
-            const Archive = require('./tabelas/' + entitys[i]);
+            const Archive = require(path + '/' + entitys[i]);
             const instance = new Archive();
 
             if (instance instanceof EntitySync) {

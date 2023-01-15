@@ -1,5 +1,6 @@
 const db = require('./db');
 const Sync = require('./Sync/Sync');
+const initBD = require('./initBD');
 
 async function conectar(host, port, user, password, database) {
     const statusconn = await db.Connect({
@@ -13,9 +14,9 @@ async function conectar(host, port, user, password, database) {
     return statusconn.status;
 };
 
-async function sincronizar(path) {
+async function sincronizar(database, path) {
     try {
-        await Sync(path);
+        await Sync(database, path);
         return true;
     } catch (error) {
         console.log(error);
@@ -28,4 +29,8 @@ module.exports = {
     sincronizar,
     query: db.query,
     queryFindOne: db.queryFindOne,
+    insertTable: db.insertTable,
+    updateTable: db.updateTable,
+    setQuery: db.setQuery,
+    initBD: initBD
 }
