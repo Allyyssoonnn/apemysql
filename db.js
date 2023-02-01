@@ -401,7 +401,10 @@ const setQuery = async (tabela, campo_chave, objeto) => {
     var insertId;
 
     if (objeto[campo_chave]) {
-        for (const property of Object.keys(objeto)) {    
+        for (const property of Object.keys(objeto)) {
+            const data = property.match('dt') || property.match('data');
+            if (data) objeto[property] = moment(new Date(objeto[property])).format('YYYYMMDD');
+
             const resp = await updateTable(tabela,
                 [property],
                 [objeto[property]],
@@ -412,7 +415,10 @@ const setQuery = async (tabela, campo_chave, objeto) => {
     } else {
         let campos = [];
         let valores = [];
-        for (const property of Object.keys(objeto)) {    
+        for (const property of Object.keys(objeto)) {   
+            const data = property.match('dt') || property.match('data');
+            if (data) objeto[property] = moment(new Date(objeto[property])).format('YYYYMMDD');
+             
             campos.push(property);
             valores.push(objeto[property]);
         }
