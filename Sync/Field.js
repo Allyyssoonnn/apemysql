@@ -68,7 +68,7 @@ class Field {
     }
 
     datetime() {
-        this.type = 'satetime';
+        this.type = 'datetime';
         return this;
     }
 
@@ -80,6 +80,11 @@ class Field {
 
     notnull() {
         this.notnull = true;
+        return this;
+    }
+
+    text() {
+        this.type = 'text';
         return this;
     }
 }
