@@ -3,30 +3,52 @@ const extract = require('extract-zip');
 const mysql = require('mysql');
 const child_process = require('child_process');
 const cmd = require('node-cmd');
+const EventEmitter = require('events');
 
-module.exports = async function initBD(dir, dirzip, port, nameService, bd) {
+module.exports = function initBD(dir, dirzip, port, nameService, bd) {
     try {
-        const verifyadmin = cmd.runSync('NET SESSION');
-        if (verifyadmin.stderr) {
-            console.log('[InitBD] - Sem permissão de administrador');
-            return { status: false };
-        }
+        const event = new EventEmitter();
 
-        //Verificando pasta se existe retorna
-        if (fs.existsSync(dir)) {
-            return { status: false };
-        } else fs.mkdirSync(dir);
+        cmd.run('NET SESSION', resp => {
+            if (resp?.code === 2) {
+                event.emit('error', '[InitBD] - Sem permissão de administrador');
+                event.emit('end');
+            } else {
+                //Verificando pasta se existe retorna
+                event.emit('log', 'Verificando pastas');
+                if (fs.existsSync(dir)) {
+                    event.emit('error', '[InitBD] - Pasta já existe');
+                    event.emit('end');
+                } else {
+                    event.emit('log', 'Criando pastas');
+                    fs.mkdirSync(dir);
+                    //Copia arquivo zip para pasta
+                    event.emit('log', 'Copiando arquivos');
+                    fs.copyFileSync(dirzip, `${dir}/mysql.zip`);
+                    
+                    //Extrai o arquivo zip
+                    event.emit('log', 'Organizando arquivos');
+                    unzip(dir)
+                    .then(() => {
+                        //Cria my.ini
+                        event.emit('log', 'Quase lá');
+                        getIni(dir, port)
+                        .then(() => {
+                            //Cria bat de inicio
+                            getBat(dir, nameService)
+                            .then(() => {
+                                //Cria Banco de dados
+                                event.emit('log', 'Finalizando');
+                                criaBD(bd)
+                                .then(() => event.emit('end', ''));
+                            });
+                        });
+                    })
+                }
+            }
+        });
 
-        //Copia arquivo zip para pasta
-        fs.copyFileSync(dirzip, `${dir}/mysql.zip`);
-        //Extrai o arquivo zip
-        await unzip(dir);
-        //Cria my.ini
-        await getIni(dir, port);
-        //Cria bat de inicio
-        await getBat(dir, nameService);
-        //Cria Banco de dados
-        await criaBD(bd);
+        return event;
     } catch (error) {
         return { status: false, error }
     }
@@ -55,15 +77,18 @@ async function criaBD(bd) {
             conn.query(`SET PASSWORD FOR 'root'@'localhost' = '2022@Ape#'`, [], (error) => { if (error) rej(error) });
             conn.query(`UPDATE mysql.user SET HOST = '%' WHERE user = 'root'`, [], (error) => { if (error) rej(error) });
             conn.query(`CREATE DATABASE ${bd}`, [], (error) => { if (error) rej(error) });
+            res();
         })
     })
 }
 
 async function getBat(dir, nameService) {
-    const bat = `cd ${invertBar(`${dir}/mysql/bin`)}
+    const bat = `chcp 65001
+        cd ${invertBar(`${dir}/mysql/bin`)}
         mysqld --defaults-file="${invertBar(`${dir}/my.ini`)}" --initialize-insecure
         mysqld --install ${nameService} --defaults-file="${invertBar(`${dir}/my.ini`)}"
-        net start ${nameService}`
+        net start ${nameService}
+        `
     ;
 
     const batStop = `
@@ -75,11 +100,12 @@ async function getBat(dir, nameService) {
     return new Promise((res, rej) => {
         const batexec = child_process.spawn('cmd.exe', ['/c', `${dir}/mysql.bat`]);
 
-        batexec.on('close', code => {
+        batexec.on('close', (code, signal) => {
             res(true);
         })
         batexec.on('error', err => {
-            if (err) rej(err);
+            throw err;
+            // if (err) rej(err);
         })
     })
 }
@@ -140,7 +166,8 @@ async function getIni(dir, port) {
         `
     ;
 
-    fs.writeFile(`${dir}/my.ini`, myini, err => {
+    fs.writeFile(`${dir}/my.ini`, myini, { encoding: 'ascii' },
+    err => {
         if (err) return { status: false }
         return { status: true }
     })
